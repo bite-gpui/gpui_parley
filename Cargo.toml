@@ -1,0 +1,60 @@
+# `gpui_parley` in its own repository.
+#
+# It was `crates/gpui_parley` in `bite-gpui/bite-gpui`, one member of the layer
+# stack, and it is not one: it is a *second implementation* of `TextSystem`, the
+# trait the facade swaps, and it is meant to be depended on rather than shipped
+# inside the distribution. See README.md for where this file's contents came from
+# and what changed on the way here.
+[package]
+name = "gpui_parley"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "Apache-2.0"
+description = "A Parley-backed TextSystem for GPUI"
+repository = "https://github.com/bite-gpui/gpui_parley"
+readme = "README.md"
+keywords = ["gui", "text", "shaping", "layout"]
+categories = ["gui"]
+
+# Its own workspace root, so the crate stands alone: no path to a checkout, and
+# `cargo test` here does not need one.
+[workspace]
+
+[lints.clippy]
+dbg_macro = "deny"
+todo = "deny"
+
+[lib]
+name = "gpui_parley"
+path = "src/gpui_parley.rs"
+
+[dependencies]
+anyhow = "1.0.86"
+# The trait this implements, its scene types, and the shared-string/type crates
+# behind them — all by published version, under their published package names,
+# keeping their upstream library names (`gpui_engine`, `gpui_types`).
+gpui_engine = { version = "1.21", package = "bite-gp-engine" }
+gpui_shared_string = { version = "1.21", package = "bite-gp-shared-string" }
+gpui_types = { version = "1.21", package = "bite-gp-types" }
+# The facade, only for the ones that build a window — the demo and the injection
+# test. `ParleyTextSystem` itself needs none of it.
+gpui = { version = "1.21", package = "bite-gpui", default-features = false, optional = true }
+# Tessellating glyph outlines into triangles, for the vector path.
+lyon = "1.0"
+parley = "0.11"
+skrifa = "0.44"
+smallvec = { version = "1.6", features = ["union", "const_new"] }
+tiny-skia = "0.11"
+
+[features]
+demo = ["dep:gpui", "gpui/platform"]
+test-support = ["dep:gpui", "gpui/platform", "gpui/test-support"]
+
+[[example]]
+name = "parley_demo"
+required-features = ["demo"]
+
+[[test]]
+name = "injection"
+required-features = ["test-support"]

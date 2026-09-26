@@ -1,0 +1,9 @@
+# For this repository's own builds — its tests, and the four examples, three of
+# which are the cost measurements quoted in the README. A consumer is not
+# affected: cargo ignores a dependency's toolchain file.
+#
+# It matches the pin the crate was built under while it lived in
+# `bite-gpui/bite-gpui`, so a number recorded here and a number recorded there
+# are from the same compiler.
+[toolchain]
+channel = "1.98.1"
