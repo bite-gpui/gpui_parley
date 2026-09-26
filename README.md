@@ -9,17 +9,28 @@ that is not the default. It exists because the SPI's surface — a line, a run, 
 glyph — cannot express what Parley can do, so the crate offers those features
 through an extension trait while still implementing the SPI for everything else.
 
-## Using it
+The **package** is `bite-gp-parley`, the name the layer stack published this crate
+under, and the **library** is `gpui_parley`, which is what code names. The two
+differ because the distribution's rule is that a package identifier carries its
+namespace while a library target keeps the upstream name — so a consumer's
+`Cargo.toml` line changes and its `use gpui_parley::…` does not.
 
-The crate is not on crates.io yet, so today it is a git dependency:
+## Using it
 
 ```toml
 [dependencies]
-gpui_parley = { git = "https://github.com/bite-gpui/gpui_parley" }
+# Library name `gpui_parley`; `use gpui_parley::…` is unaffected by the package
+# name. Version 1.21 is the line this crate tracks — see the note below.
+bite-gp-parley = "1.21"
 ```
 
-Once a release has been published, a version requirement is the way — see
-[Publishing](#publishing) below.
+Until the first release from this repository is on crates.io, the same crate is a
+git dependency — note the `package` key, because the repository's directory and
+its package do not share a name:
+
+```toml
+gpui_parley = { package = "bite-gp-parley", git = "https://github.com/bite-gpui/gpui_parley" }
+```
 
 ```rust
 use gpui_parley::ParleyTextSystem;
@@ -81,12 +92,26 @@ exists. That copy records its own base as the fork's workspace at `d418335` (on
 3. **One clippy nit** in the crate's own tests, which the demo's workspace lints
    more strictly than the fork's.
 
+**What that base is, relative to what shipped.** `d418335` and the commit `1.21.0`
+was published from (`30ff1dc`, on `bite_v1.21.0`) differ in this crate by exactly
+one thing, and the diff is twelve lines: the fonts. `30ff1dc` moved them from the
+repository's shared `assets/` into `crates/gpui_parley/assets/`, because
+`include_bytes!` cannot reach outside a package root and the tarball was being
+published without the files it compiles against. This repository already has them
+inside the crate — it was built from the vendored copy, whose fonts had been moved
+in for the same reason — so the `src/` here is `1.21.0`'s plus the three changes
+above and nothing else. **That is what makes `1.21.1` the honest first release
+from here**: under the distribution's own numbering, `1.21.0` is the base of the
+line and its amendments are `1.21.1`–`1.21.99`, so this is the first amendment to
+that line rather than a fresh version of a new crate.
+
 So it is worth being plain about what is and is not in
 `bite-gpui/bite-gpui`: the crate on every branch there — including
 `bite_v1.21.0-pre-path-pass-cost` — is the version *without* the hinting cache.
 The three changes above were made in the demo's copy and never pushed back into
-the fork's crate. Anyone depending on the published `bite-gp-parley` is getting
-the un-cached path.
+the fork's crate. Anyone depending on `bite-gp-parley 1.21.0` or `1.20.203` as
+they are published today is getting the un-cached path; `1.21.1` from this
+repository is the one that closes it.
 
 On the way into this repository the crate was made self-contained: its fonts
 moved from the demo workspace into `assets/fonts/`, and its manifest was written
@@ -151,15 +176,15 @@ does not need.
 
 ```sh
 # what will be released, without publishing it
-gh workflow run release.yml -f tag=v0.1.0
+gh workflow run release.yml -f tag=v1.21.1
 
 # the release itself: push the tag, then approve the environment
-git tag v0.1.0 && git push origin v0.1.0
+git tag v1.21.1 && git push origin v1.21.1
 ```
 
 Rules the workflow enforces, all of them because a crates.io version is immutable:
 
-- **The tag must name the manifest's version.** `v0.2.0` releases `0.2.0` and
+- **The tag must name the manifest's version.** `v1.21.2` releases `1.21.2` and
   refuses to release anything else, so a tag cannot publish a commit whose version
   it does not name. Bumping the crate is a manifest edit and a tag, and the
   workflow is what checks the two agree.
@@ -169,19 +194,33 @@ Rules the workflow enforces, all of them because a crates.io version is immutabl
   token lives and where required reviewers belong. A tag push starts the release;
   a reviewer is what makes it an upload.
 
-Two things have to exist before the first release, and neither is in this
+**The name continues.** This repository publishes `bite-gp-parley`, the name the
+layer stack used, so a downstream `bite-gp-parley = "1.21"` requirement keeps
+resolving — to a `1.21.1` that has the changes above, where `1.21.0` did not. The
+layer stack stopped publishing the crate when it stopped walking it as a zed root,
+so the two cannot both publish it.
+
+**Versioning is the distribution's, not a fresh count.** `docs/contract.md` §6 in
+`bite-gpui/distribution` numbers a release `major.minor.(patch * 100 + amendment)`:
+`1.21.0` is a base and its amendments run `1.21.1`–`1.21.99`, with `1.21.100`
+reserved for the next upstream patch. So the next release from here — an amendment
+to the same line — is `1.21.2`, and a release tracking a later stack line would bump
+the minor instead.
+
+Once before the first release, two things have to exist, and neither is in this
 repository:
 
 1. **A `crates-io` environment** on this repository with required reviewers, and
-   `CARGO_REGISTRY_TOKEN` as a secret on it. The layer stack's token is scoped to
-   the crate name pattern `bite_*`, which does not cover `gpui_parley` — an upload
-   with it is refused as `403 Forbidden: this token does not have the required
-   permissions to perform this action`. The token has to cover this name.
-2. **A version to release.** `0.1.0` is what the manifest says now. The scheme is
-   this crate's own; the layer stack's `1.21.0` numbering came from the upstream
-   Zed release a target retargeted, which is not a thing this repository has.
+   `CARGO_REGISTRY_TOKEN` as a secret on it. The token has to cover the name
+   `bite-gp-parley`. Note that crates.io token scopes are **name prefix globs**: the
+   token the layer stack publishes with is scoped to `bite_*`, which does not match
+   `bite-gp-parley` because of the hyphen, and an upload with it is refused as
+   `403 Forbidden: this token does not have the required permissions to perform
+   this action`. (It is also why that token refused `bite-gp-gpui-util`.) The
+   environment exists on the repository already; the secret and the reviewers do
+   not.
+2. **A tag.** Nothing else: `v1.21.1` names the version the manifest already
+   carries.
 
-The published `bite-gp-parley` on crates.io is this crate's predecessor and stays
-where it is: versions `1.20.203` and `1.21.0`, published from the layer stack, both
-without the changes listed above. Publishing from here does not continue that name
-— it starts this one.
+The name is owned on crates.io by the user `Vanuan`, which is the same account
+this repository is under, so nothing has to be transferred.

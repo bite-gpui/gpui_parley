@@ -1,4 +1,4 @@
-# Publish `gpui_parley` to crates.io.
+# Publish `bite-gp-parley` to crates.io.
 #
 # This is the publisher that used to be `bite-gpui/distribution`'s, where the crate
 # was one of thirty-one published from a staged checkout of a branch. What moved
@@ -6,7 +6,7 @@
 # crate set:
 #
 #   * **the version is a tag in this repository, and the tag has to agree with the
-#     manifest.** `v0.2.0` releases the manifest's `0.2.0` and refuses to release
+#     manifest.** `v1.21.2` releases the manifest's `1.21.2` and refuses to release
 #     anything else, so a tag can never publish a commit whose version it does not
 #     name. In the layer stack the tag lived in the *source* repository, which is
 #     why that workflow could not simply trigger on one; here the tag and the code
@@ -178,9 +178,9 @@ jobs:
           VERSION: ${{ steps.resolve.outputs.version }}
         run: |
           if [ "$MODE" = "false" ]; then
-            echo "::notice title=release::gpui_parley $VERSION will be published to crates.io"
+            echo "::notice title=release::bite-gp-parley $VERSION will be published to crates.io"
           else
-            echo "::notice title=dry run::gpui_parley $VERSION was packaged and verified, not uploaded"
+            echo "::notice title=dry run::bite-gp-parley $VERSION was packaged and verified, not uploaded"
           fi
 
   publish:
@@ -210,11 +210,10 @@ jobs:
       #
       # There are two ways the upload fails on credentials, and they read
       # differently. An empty secret is caught here. A token whose *scope* does not
-      # cover this crate is not: crates.io tokens can be restricted to crate name
-      # patterns, the one the layer stack publishes with is scoped to `bite_*`, and
-      # a name outside that pattern is refused at upload with 403 "this token does
-      # not have the required permissions to perform this action". A token for this
-      # repository has to cover `gpui_parley`.
+      # cover this crate is not: crates.io token scopes are **name prefix globs**,
+      # and the token the layer stack publishes with is scoped to `bite_*` — which
+      # does not match `bite-gp-parley`, because of the hyphen. The refusal is a
+      # 403 at upload, after everything has been built.
       - name: Require the registry token
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
@@ -225,7 +224,8 @@ jobs:
           echo "::error title=missing secret::CARGO_REGISTRY_TOKEN is empty. It belongs on" \
                "the \`crates-io\` environment of this repository (Settings -> Environments)," \
                "which is the only place this job reads it from, and it has to be a token" \
-               "whose scope covers the name \`gpui_parley\`. A hand release uses \`cargo login\`," \
+               "whose scope covers the name \`bite-gp-parley\`. Note that scopes are name" \
+               "prefix globs: \`bite_*\` does not cover it. A hand release uses \`cargo login\`," \
                "or the same variable in the shell."
           exit 1
 

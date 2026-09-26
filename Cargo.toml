@@ -1,4 +1,4 @@
-# `gpui_parley` in its own repository.
+# `gpui_parley`, in its own repository.
 #
 # It was `crates/gpui_parley` in `bite-gpui/bite-gpui`, one member of the layer
 # stack, and it is not one: it is a *second implementation* of `TextSystem`, the
@@ -6,12 +6,22 @@
 # inside the distribution. See README.md for where this file's contents came from
 # and what changed on the way here.
 #
-# It publishes to crates.io from here, by tag — `.github/workflows/release.yml`.
-# The name is `gpui_parley`, which was free; the `bite-gp-parley` published from
-# the layer stack is this crate's predecessor and stays where it is.
+# It publishes to crates.io from here, by tag — `.github/workflows/release.yml` —
+# and it continues the name the layer stack published it under rather than starting
+# a new one, so downstream `bite-gp-parley = "1.21"` requirements keep resolving to
+# this crate. That is why `package.name` and `[lib] name` differ, which is the same
+# split the whole project makes: the package identifier carries the distribution's
+# namespace, the library target keeps the upstream name, and `use gpui_parley::…`
+# is unchanged by any of it.
+#
+# The version is the scheme's own next slot for this line, not a fresh count.
+# `docs/contract.md` §6 in `bite-gpui/distribution` numbers a release
+# `major.minor.(patch * 100 + amendment)`, so `1.21.0` is the base and its
+# amendments are `1.21.1`–`1.21.99`. This crate is `1.21.0` plus the three changes
+# listed in the README — the first amendment to that line.
 [package]
-name = "gpui_parley"
-version = "0.1.0"
+name = "bite-gp-parley"
+version = "1.21.1"
 edition = "2024"
 license = "Apache-2.0"
 description = "A Parley-backed TextSystem for GPUI"
@@ -29,6 +39,10 @@ dbg_macro = "deny"
 todo = "deny"
 
 [lib]
+# Not derived from the package name, and it must not be: `bite-gp-parley` would
+# export `bite_gp_parley` and every `use gpui_parley::…` in a consumer would stop
+# compiling. This is invariant 2 of the distribution, applied to a crate that is
+# no longer part of it.
 name = "gpui_parley"
 path = "src/gpui_parley.rs"
 
