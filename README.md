@@ -17,21 +17,6 @@ namespace while a library target keeps the upstream name — so a consumer's
 
 ## Using it
 
-Today the crate is a git dependency, because `1.21.1` — the first release from
-this repository — is not on crates.io yet. Note the `package` key: the
-repository's directory and its package do not share a name.
-
-```toml
-[dependencies]
-# Library name `gpui_parley`; `use gpui_parley::…` is unaffected by the package name.
-gpui_parley = { package = "bite-gp-parley", git = "https://github.com/bite-gpui/gpui_parley" }
-```
-
-Once `1.21.1` is published, this is the same crate by version — and until it is,
-`bite-gp-parley = "1.21"` resolves to `1.21.0`, the predecessor that does *not*
-have the changes below. That is worth knowing before reaching for the version
-requirement instead of the revision:
-
 ```toml
 [dependencies]
 bite-gp-parley = "1.21"
@@ -44,6 +29,16 @@ gpui::application()
     .with_text_system(ParleyTextSystem::new())
     .run(...);
 ```
+
+The package is `bite-gp-parley` and the library is `gpui_parley`, and **no rename
+is needed for that to work**: cargo exposes a dependency under its *library* name,
+so the key in `[dependencies]` can be the package name while `use gpui_parley::…`
+compiles unchanged. That is the point of preserving the library name, and it is why
+adopting this crate is one manifest line rather than a rename and a search-and-
+replace.
+
+The requirement floats within the 1.21 line, whose amendments are `1.21.1`–
+`1.21.99`; pin exactly if a build has to be reproducible against one.
 
 `ParleyTextSystem::new()` already returns an `Arc<Self>`, which is what
 `with_text_system` wants.
@@ -195,15 +190,17 @@ Rules the workflow enforces, all of them because a crates.io version is immutabl
   workflow is what checks the two agree.
 - **A dispatch is a dry run unless it says otherwise,** and a real publish has to
   repeat the tag to confirm.
-- **A real publish waits on the `crates-io` environment**, which is where the
-  token lives and where required reviewers belong. A tag push starts the release;
-  a reviewer is what makes it an upload.
+- **A real publish is meant to wait on the `crates-io` environment**, which is
+  where the token belongs and where required reviewers go. **No reviewers are
+  configured yet**, so at present a tag push goes straight to the upload — see the
+  note at the end of this section. A tag push starts the release; a reviewer is what
+  is supposed to make it an upload.
 
-**The name continues.** This repository publishes `bite-gp-parley`, the name the
-layer stack used, so a downstream `bite-gp-parley = "1.21"` requirement keeps
-resolving — to a `1.21.1` that has the changes above, where `1.21.0` did not. The
-layer stack stopped publishing the crate when it stopped walking it as a zed root,
-so the two cannot both publish it.
+**The name continues, and `1.21.1` is out.** This repository publishes
+`bite-gp-parley`, the name the layer stack used, so a downstream
+`bite-gp-parley = "1.21"` requirement keeps resolving — now to a `1.21.1` that has
+the changes above, where `1.21.0` did not. The layer stack stopped publishing the
+crate when it stopped walking it as a zed root, so the two cannot both publish it.
 
 **Versioning is the distribution's, not a fresh count.** `docs/contract.md` §6 in
 `bite-gpui/distribution` numbers a release `major.minor.(patch * 100 + amendment)`:
@@ -212,20 +209,35 @@ reserved for the next upstream patch. So the next release from here — an amend
 to the same line — is `1.21.2`, and a release tracking a later stack line would bump
 the minor instead.
 
-Once before the first release, two things have to exist, and neither is in this
-repository:
+### What the first release needed, and still needs
 
-1. **A `crates-io` environment** on this repository with required reviewers, and
-   `CARGO_REGISTRY_TOKEN` as a secret on it. The token has to cover the name
-   `bite-gp-parley`. Note that crates.io token scopes are **name prefix globs**: the
-   token the layer stack publishes with is scoped to `bite_*`, which does not match
-   `bite-gp-parley` because of the hyphen, and an upload with it is refused as
-   `403 Forbidden: this token does not have the required permissions to perform
-   this action`. (It is also why that token refused `bite-gp-gpui-util`.) The
-   environment exists on the repository already; the secret and the reviewers do
-   not.
-2. **A tag.** Nothing else: `v1.21.1` names the version the manifest already
-   carries.
+`1.21.1` was published on 2026-09-26 by run
+[`36207853084`](https://github.com/bite-gpui/gpui_parley/actions/runs/36207853084).
+Two things had to exist for it, and one of them is still not what this file says it
+should be:
 
-The name is owned on crates.io by the user `Vanuan`, which is the same account
-this repository is under, so nothing has to be transferred.
+1. **`CARGO_REGISTRY_TOKEN`, and it has to cover the name.** It is currently a
+   **repository** secret rather than an environment secret. That works — a job that
+   names an environment still resolves repository secrets — but it is the weaker
+   placement: a repository secret is readable by *every* workflow in the repository,
+   where an environment secret is readable only by a job that names the environment.
+   Moving it is worth doing before this repository has any workflow with a
+   pull-request trigger. Note that crates.io token scopes are **name prefix globs**:
+   the token the layer stack publishes with is scoped to `bite_*`, which does *not*
+   match `bite-gp-parley`, and an upload with it is refused as `403 Forbidden: this
+   token does not have the required permissions to perform this action`.
+2. **A tag**, `v1.21.1`, naming the version the manifest carried.
+
+**The `crates-io` environment has no required reviewers**, so the approval gate
+this file describes does not exist yet: a tag push goes straight to the upload. The
+environment exists on the repository; add reviewers under Settings ->
+Environments.
+
+A consequence of that gap, from the first attempt: the publish step wrote its log
+into the checkout, and `cargo publish` refuses a dirty tree, so the log made its own
+step fail. That is fixed (the log goes to `RUNNER_TEMP`), but nothing about the
+environment would have caught it — a reviewer would have seen a red run rather than
+a published mistake.
+
+The name is owned on crates.io by the user `Vanuan`, which is the same account this
+repository is under, so nothing has to be transferred.
