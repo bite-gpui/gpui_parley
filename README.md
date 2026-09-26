@@ -111,6 +111,9 @@ cargo run --release -p gpui_parley --example frame_cost
 to the working directory, so run it from the repository root — which is what
 `cargo run` does.
 
+A recorded run, with the numbers these print and what they mean, is in
+[`benchmarks/2026-09-26-cost-examples.md`](benchmarks/2026-09-26-cost-examples.md).
+
 ## Tests
 
 ```sh
