@@ -1,0 +1,49 @@
+# The system packages this repository needs before anything links.
+#
+# The list is `bite-gpui/distribution`'s `linux-deps` verbatim — its union of what
+# ce's publish job installs and what zed's `script/linux` installs for
+# Debian/Ubuntu — because that list is a *proven* superset: it links the whole
+# layer stack, including `gpui_macros`' `render_test`, which pulls more than
+# anything here does.
+#
+# It is longer than this crate looks like it needs, and the reason is the
+# `test-support` test rather than the crate. `ParleyTextSystem` alone reaches one
+# `-sys` crate (`yeslogic-fontconfig-sys`, through fontique) and nothing else that
+# links a system library; but `cargo test --features test-support` links the
+# facade and the Linux platform, which is X11, Wayland, xkbcommon and wgpu. The
+# test itself is headless and opens no window; linking it is what needs the
+# packages.
+#
+# Two failures this list exists to prevent, both of which happened in the layer
+# stack and are recorded in its comments:
+#
+#   * `cargo publish` verifies a release by unpacking the tarball and building it
+#     as the root of its own build, so the libraries the crate links are needed in
+#     the *publish* job even though nothing there looks like a build. Without
+#     fontconfig, `yeslogic-fontconfig-sys`'s build script unwraps a `pkg-config`
+#     result and the verification dies as a panic (exit status 101) rather than as
+#     a failed link — which is how 1.21.0 stopped.
+#   * a short list is not enough to *link test binaries*. `ce`'s packaging list
+#     alone died at the linker with `unable to find library -lX11-xcb` while
+#     linking a test that pulls the whole stack.
+name: Install Linux build dependencies
+description: Install the system packages this repository needs to build and link on Debian/Ubuntu
+
+runs:
+  using: composite
+  steps:
+    # The list is Debian's, and there is no macOS leg to skip it for: the crate
+    # has no platform-specific code path, so it is built on Linux only. The
+    # `if` is kept so a runner change cannot surprise this into a macOS failure.
+    - name: Install system dependencies
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          libasound2-dev libegl1-mesa-dev libfontconfig-dev libgit2-dev \
+          libglib2.0-dev libgles2-mesa-dev libssl-dev libsqlite3-dev \
+          libva-dev libvulkan1 libvulkan-dev libwayland-dev \
+          libx11-dev libx11-xcb-dev libxkbcommon-dev libxkbcommon-x11-dev \
+          libxcb-randr0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+          libxcb-xinput-dev libzstd-dev

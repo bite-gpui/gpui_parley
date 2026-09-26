@@ -1,0 +1,236 @@
+# Publish `gpui_parley` to crates.io.
+#
+# This is the publisher that used to be `bite-gpui/distribution`'s, where the crate
+# was one of thirty-one published from a staged checkout of a branch. What moved
+# is the part that was about uploading safely, because that part was never about a
+# crate set:
+#
+#   * **the version is a tag in this repository, and the tag has to agree with the
+#     manifest.** `v0.2.0` releases the manifest's `0.2.0` and refuses to release
+#     anything else, so a tag can never publish a commit whose version it does not
+#     name. In the layer stack the tag lived in the *source* repository, which is
+#     why that workflow could not simply trigger on one; here the tag and the code
+#     are in the same place, so a tag push is a release.
+#   * **a dry run is the default for a dispatch**, and packaging is a job of its
+#     own: iterating on the manifest needs no approval, no token and no risk.
+#   * **a real publish waits on the `crates-io` environment.** That is where
+#     CARGO_REGISTRY_TOKEN lives and where required reviewers belong, and it is the
+#     last thing between a tag and an irreversible upload. Both paths go through it
+#     — a tag push starts the release, a reviewer approves it.
+#   * **the token is checked before anything is built**, so a missing secret or a
+#     mis-scoped one costs seconds rather than a compile.
+#
+# What did *not* move is the machinery that existed to publish thirty-one crates in
+# dependency order: the topological ordering, the local-patch table that made a
+# first publish resolvable, the `--only` resume, and the rate-limit pacing. One
+# crate has none of those problems — a new *version* of a name that already exists
+# is not limited in practice, and a new *name* costs a single publish.
+#
+# crates.io versions are immutable. `cargo publish` refuses a version that already
+# exists, and the recovery for a bad release is `cargo yank`, never a re-upload.
+name: Release
+
+run-name: ${{ github.event_name == 'push' && format('Release {0}', github.ref_name) || format('{0} {1}', inputs.dry_run == false && 'Release' || 'Dry run', inputs.tag) }}
+
+on:
+  # The tag is the release. Pushing one starts this workflow, and the upload still
+  # waits for the environment's approval.
+  push:
+    tags: ['v*']
+
+  # For re-running a tag, and for looking at the packaging without going near the
+  # registry. `tag` is required and names an existing tag, so a dispatch can never
+  # release a commit that is not tagged — the same rule the push path enforces.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'the vX.Y.Z tag to act on (it must already exist)'
+        required: true
+      dry_run:
+        description: 'package and verify without uploading'
+        type: boolean
+        required: false
+        default: true
+      confirm:
+        description: 'repeat the tag to confirm a real publish'
+        required: false
+        default: ''
+
+# One upload at a time in this repository. A concurrency group is per-repository,
+# so this cannot serialise against `bite-gpui/distribution`'s releases; crates.io
+# is what does that, should both ever publish at once.
+concurrency:
+  group: registry-publish
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  # No debug information, so a link step fits on a runner — the same setting the
+  # layer stack's workflows use.
+  CARGO_PROFILE_DEV_DEBUG: '0'
+  CARGO_PROFILE_TEST_DEBUG: '0'
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: package
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      dry_run: ${{ steps.mode.outputs.dry_run }}
+    env:
+      # On a tag push the tag is the intent and there is nothing to type; on a
+      # dispatch there is, and a real publish has to repeat it. Setting CONFIRM to
+      # the tag itself on a push is what lets one check cover both paths.
+      TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+      CONFIRM: ${{ github.event_name == 'push' && github.ref_name || inputs.confirm }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+
+      - uses: ./.github/actions/linux-deps
+
+      # No `toolchain` input: the action reads this repository's
+      # `rust-toolchain.toml`, so the compiler is pinned in one place rather than
+      # two, and a release is built by the same compiler a checkout here would use.
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: The tag must name the manifest's version
+        id: resolve
+        run: |
+          set -euo pipefail
+          # tomllib is 3.11 and later, and ubuntu-latest ships 3.12, so this needs
+          # no setup action. The layer stack pinned 3.13 because its checks also
+          # ran on macOS, where the runner's python3 is older.
+          version="$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["version"])')"
+          if [ "$TAG" != "v$version" ]; then
+            echo "::error title=tag mismatch::$TAG does not name this manifest's version ($version)." \
+                 "A release tag is v<version>: tag v$version, or set the manifest to ${TAG#v}."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve the mode
+        id: mode
+        env:
+          # A dispatch says; a tag push means a release, which the environment
+          # still has to approve.
+          DRY_RUN: ${{ github.event_name == 'push' && 'false' || inputs.dry_run }}
+        run: echo "dry_run=$DRY_RUN" >> "$GITHUB_OUTPUT"
+
+      - name: Refuse an unconfirmed publish
+        env:
+          DRY_RUN: ${{ github.event_name == 'push' && 'false' || inputs.dry_run }}
+        run: |
+          # Compared as a shell string because it arrives either way: a dispatch
+          # boolean may be a boolean or a string.
+          if [ "$DRY_RUN" = "true" ]; then
+            exit 0
+          fi
+          if [ "$CONFIRM" != "$TAG" ]; then
+            echo "::error title=unconfirmed::confirm ($CONFIRM) does not name the tag ($TAG)." \
+                 "Repeat the tag to publish it, or leave dry_run checked."
+            exit 1
+          fi
+
+      # The verification this repository has, and here rather than in a workflow of
+      # its own, because it costs seconds. The layer stack keeps its checks out of
+      # `release.yml` and demands a `verify.yml` receipt instead, because verifying
+      # it stages and compiles thirty-one crates; one crate's tests are cheaper
+      # than the receipt machinery that would gate them.
+      #
+      # `--locked` twice: the second suite links the facade and the Linux platform,
+      # and neither is allowed to move the lockfile underneath the packaging step
+      # below. A lock that would have to change is a failure to look at, not
+      # something for the release to quietly fix.
+      - name: Test
+        run: |
+          cargo test --locked
+          cargo test --locked --features test-support
+
+      # `cargo publish`'s own packaging and verification: the tarball, its
+      # manifest, and the crate built as the root of its own build. A manifest the
+      # registry would reject, or a file the crate reads that is not in the
+      # package, is found here rather than mid-publish.
+      - name: Package
+        run: cargo publish --dry-run --locked
+
+      - name: Summarise
+        env:
+          MODE: ${{ steps.mode.outputs.dry_run }}
+          VERSION: ${{ steps.resolve.outputs.version }}
+        run: |
+          if [ "$MODE" = "false" ]; then
+            echo "::notice title=release::gpui_parley $VERSION will be published to crates.io"
+          else
+            echo "::notice title=dry run::gpui_parley $VERSION was packaged and verified, not uploaded"
+          fi
+
+  publish:
+    needs: package
+    # `needs` already skips this when `package` fails; its result is named as well
+    # because a failed job does not reliably expose the outputs its steps wrote.
+    if: ${{ needs.package.result == 'success' && needs.package.outputs.dry_run == 'false' }}
+    runs-on: ubuntu-latest
+    # The approval gate, and where CARGO_REGISTRY_TOKEN lives. Configure the
+    # environment with required reviewers: it is the last thing between a tag and
+    # an upload, and the only place the token is reachable from.
+    environment: crates-io
+    timeout-minutes: 60
+    env:
+      TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+
+      - uses: ./.github/actions/linux-deps
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      # Only a job that names the environment can see the token, so this is the
+      # first place it can be checked. Failing here costs seconds.
+      #
+      # There are two ways the upload fails on credentials, and they read
+      # differently. An empty secret is caught here. A token whose *scope* does not
+      # cover this crate is not: crates.io tokens can be restricted to crate name
+      # patterns, the one the layer stack publishes with is scoped to `bite_*`, and
+      # a name outside that pattern is refused at upload with 403 "this token does
+      # not have the required permissions to perform this action". A token for this
+      # repository has to cover `gpui_parley`.
+      - name: Require the registry token
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          if [ -n "$CARGO_REGISTRY_TOKEN" ]; then
+            exit 0
+          fi
+          echo "::error title=missing secret::CARGO_REGISTRY_TOKEN is empty. It belongs on" \
+               "the \`crates-io\` environment of this repository (Settings -> Environments)," \
+               "which is the only place this job reads it from, and it has to be a token" \
+               "whose scope covers the name \`gpui_parley\`. A hand release uses \`cargo login\`," \
+               "or the same variable in the shell."
+          exit 1
+
+      # Reached only with the token and an approval. Packaging and verification
+      # happened in `package`; this is the upload, and `cargo publish` runs its own
+      # verify build before it makes one, so a failure here leaves the registry
+      # untouched.
+      - name: Publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          set -o pipefail
+          cargo publish --locked 2>&1 | tee publish.log
+
+      - name: Keep the publish log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: publish-${{ needs.package.outputs.version }}
+          path: publish.log
+          if-no-files-found: ignore

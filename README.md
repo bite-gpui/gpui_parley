@@ -11,10 +11,15 @@ through an extension trait while still implementing the SPI for everything else.
 
 ## Using it
 
+The crate is not on crates.io yet, so today it is a git dependency:
+
 ```toml
 [dependencies]
 gpui_parley = { git = "https://github.com/bite-gpui/gpui_parley" }
 ```
+
+Once a release has been published, a version requirement is the way — see
+[Publishing](#publishing) below.
 
 ```rust
 use gpui_parley::ParleyTextSystem;
@@ -133,8 +138,50 @@ The crate is Apache-2.0 — see `LICENSE-APACHE`. The faces under
 `assets/fonts/ibm-plex-sans/` are IBM Plex Sans under the SIL Open Font License
 1.1 — see the `license.txt` beside them.
 
-## State
+## Publishing
 
-Not published to crates.io; `publish = false` in the manifest, and it is reached
-by git. The published `bite-gp-parley` on crates.io is this crate's un-cached
-predecessor, from before the changes listed above.
+The tag **is** the release. `.github/workflows/release.yml` publishes to crates.io,
+and it is the publisher that used to live in `bite-gpui/distribution` — where this
+crate was one of thirty-one published from a staged checkout of a branch. The part
+that moved is the part about uploading safely: a tag that has to agree with the
+manifest, a dry run by default, an environment approval before the upload, and the
+registry token checked before anything is built. The part that did not move is the
+machinery for publishing thirty-one crates in dependency order, which one crate
+does not need.
+
+```sh
+# what will be released, without publishing it
+gh workflow run release.yml -f tag=v0.1.0
+
+# the release itself: push the tag, then approve the environment
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+Rules the workflow enforces, all of them because a crates.io version is immutable:
+
+- **The tag must name the manifest's version.** `v0.2.0` releases `0.2.0` and
+  refuses to release anything else, so a tag cannot publish a commit whose version
+  it does not name. Bumping the crate is a manifest edit and a tag, and the
+  workflow is what checks the two agree.
+- **A dispatch is a dry run unless it says otherwise,** and a real publish has to
+  repeat the tag to confirm.
+- **A real publish waits on the `crates-io` environment**, which is where the
+  token lives and where required reviewers belong. A tag push starts the release;
+  a reviewer is what makes it an upload.
+
+Two things have to exist before the first release, and neither is in this
+repository:
+
+1. **A `crates-io` environment** on this repository with required reviewers, and
+   `CARGO_REGISTRY_TOKEN` as a secret on it. The layer stack's token is scoped to
+   the crate name pattern `bite_*`, which does not cover `gpui_parley` — an upload
+   with it is refused as `403 Forbidden: this token does not have the required
+   permissions to perform this action`. The token has to cover this name.
+2. **A version to release.** `0.1.0` is what the manifest says now. The scheme is
+   this crate's own; the layer stack's `1.21.0` numbering came from the upstream
+   Zed release a target retargeted, which is not a thing this repository has.
+
+The published `bite-gp-parley` on crates.io is this crate's predecessor and stays
+where it is: versions `1.20.203` and `1.21.0`, published from the layer stack, both
+without the changes listed above. Publishing from here does not continue that name
+— it starts this one.

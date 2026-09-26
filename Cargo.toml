@@ -5,11 +5,14 @@
 # trait the facade swaps, and it is meant to be depended on rather than shipped
 # inside the distribution. See README.md for where this file's contents came from
 # and what changed on the way here.
+#
+# It publishes to crates.io from here, by tag — `.github/workflows/release.yml`.
+# The name is `gpui_parley`, which was free; the `bite-gp-parley` published from
+# the layer stack is this crate's predecessor and stays where it is.
 [package]
 name = "gpui_parley"
 version = "0.1.0"
 edition = "2024"
-publish = false
 license = "Apache-2.0"
 description = "A Parley-backed TextSystem for GPUI"
 repository = "https://github.com/bite-gpui/gpui_parley"
