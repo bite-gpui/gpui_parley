@@ -17,19 +17,24 @@ namespace while a library target keeps the upstream name — so a consumer's
 
 ## Using it
 
+Today the crate is a git dependency, because `1.21.1` — the first release from
+this repository — is not on crates.io yet. Note the `package` key: the
+repository's directory and its package do not share a name.
+
 ```toml
 [dependencies]
-# Library name `gpui_parley`; `use gpui_parley::…` is unaffected by the package
-# name. Version 1.21 is the line this crate tracks — see the note below.
-bite-gp-parley = "1.21"
+# Library name `gpui_parley`; `use gpui_parley::…` is unaffected by the package name.
+gpui_parley = { package = "bite-gp-parley", git = "https://github.com/bite-gpui/gpui_parley" }
 ```
 
-Until the first release from this repository is on crates.io, the same crate is a
-git dependency — note the `package` key, because the repository's directory and
-its package do not share a name:
+Once `1.21.1` is published, this is the same crate by version — and until it is,
+`bite-gp-parley = "1.21"` resolves to `1.21.0`, the predecessor that does *not*
+have the changes below. That is worth knowing before reaching for the version
+requirement instead of the revision:
 
 ```toml
-gpui_parley = { package = "bite-gp-parley", git = "https://github.com/bite-gpui/gpui_parley" }
+[dependencies]
+bite-gp-parley = "1.21"
 ```
 
 ```rust
