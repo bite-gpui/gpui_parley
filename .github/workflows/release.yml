@@ -233,17 +233,29 @@ jobs:
       # happened in `package`; this is the upload, and `cargo publish` runs its own
       # verify build before it makes one, so a failure here leaves the registry
       # untouched.
+      #
+      # **The log is written outside the checkout, and that is load-bearing.** `tee`
+      # opens its output file when the pipeline is set up, before `cargo publish`
+      # looks at the working tree — and cargo refuses to publish from a dirty tree,
+      # so a log written into the repository makes its own step fail:
+      #
+      #     error: 1 files in the working directory contain changes that were not
+      #     yet committed into git:\n        publish.log
+      #
+      # `RUNNER_TEMP` is the runner's scratch directory, outside the workspace. The
+      # check itself is worth keeping: it is what ties an upload to the tagged
+      # commit, so this is the log that moves and not the check that is relaxed.
       - name: Publish
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: |
           set -o pipefail
-          cargo publish --locked 2>&1 | tee publish.log
+          cargo publish --locked 2>&1 | tee "$RUNNER_TEMP/publish.log"
 
       - name: Keep the publish log
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: publish-${{ needs.package.outputs.version }}
-          path: publish.log
+          path: ${{ runner.temp }}/publish.log
           if-no-files-found: ignore
