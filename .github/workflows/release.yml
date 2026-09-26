@@ -26,11 +26,24 @@
 # crate has none of those problems — a new *version* of a name that already exists
 # is not limited in practice, and a new *name* costs a single publish.
 #
+# It does add one thing the layer stack keeps outside its release workflow: the
+# crate's own tests. There they are a separate `verify.yml` that leaves a receipt,
+# because verifying it stages and compiles thirty-one crates. Here `cargo test` is
+# seconds, so the receipt machinery would cost more than the check.
+#
+# **Every `inputs` reference here is `github.event.inputs`.** The dispatch inputs
+# are the ones that matter and the `inputs` context is only defined for a
+# `workflow_dispatch`, which this trigger is not — it is a tag push *and* a
+# dispatch. The event payload is always present, so its properties are null where
+# nothing set them, and a comparison against a string is false rather than an
+# error. (`bite-gpui/distribution`'s `ci.yml` has the same mixed trigger and no
+# `run-name` for the same reason.)
+#
 # crates.io versions are immutable. `cargo publish` refuses a version that already
 # exists, and the recovery for a bad release is `cargo yank`, never a re-upload.
 name: Release
 
-run-name: ${{ github.event_name == 'push' && format('Release {0}', github.ref_name) || format('{0} {1}', inputs.dry_run == false && 'Release' || 'Dry run', inputs.tag) }}
+run-name: ${{ github.event_name == 'push' && format('Release {0}', github.ref_name) || format('{0} {1}', github.event.inputs.dry_run == 'false' && 'Release' || 'Dry run', github.event.inputs.tag) }}
 
 on:
   # The tag is the release. Pushing one starts this workflow, and the upload still
@@ -85,12 +98,12 @@ jobs:
       # On a tag push the tag is the intent and there is nothing to type; on a
       # dispatch there is, and a real publish has to repeat it. Setting CONFIRM to
       # the tag itself on a push is what lets one check cover both paths.
-      TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
-      CONFIRM: ${{ github.event_name == 'push' && github.ref_name || inputs.confirm }}
+      TAG: ${{ github.event_name == 'push' && github.ref_name || github.event.inputs.tag }}
+      CONFIRM: ${{ github.event_name == 'push' && github.ref_name || github.event.inputs.confirm }}
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+          ref: ${{ github.event_name == 'push' && github.ref_name || github.event.inputs.tag }}
 
       - uses: ./.github/actions/linux-deps
 
@@ -119,15 +132,15 @@ jobs:
         env:
           # A dispatch says; a tag push means a release, which the environment
           # still has to approve.
-          DRY_RUN: ${{ github.event_name == 'push' && 'false' || inputs.dry_run }}
+          DRY_RUN: ${{ github.event_name == 'push' && 'false' || github.event.inputs.dry_run }}
         run: echo "dry_run=$DRY_RUN" >> "$GITHUB_OUTPUT"
 
       - name: Refuse an unconfirmed publish
         env:
-          DRY_RUN: ${{ github.event_name == 'push' && 'false' || inputs.dry_run }}
+          DRY_RUN: ${{ github.event_name == 'push' && 'false' || github.event.inputs.dry_run }}
         run: |
-          # Compared as a shell string because it arrives either way: a dispatch
-          # boolean may be a boolean or a string.
+          # Compared as a shell string because it arrives either way: a dispatch's
+          # input may be the string "true" or the boolean true.
           if [ "$DRY_RUN" = "true" ]; then
             exit 0
           fi
@@ -182,11 +195,11 @@ jobs:
     environment: crates-io
     timeout-minutes: 60
     env:
-      TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+      TAG: ${{ github.event_name == 'push' && github.ref_name || github.event.inputs.tag }}
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+          ref: ${{ github.event_name == 'push' && github.ref_name || github.event.inputs.tag }}
 
       - uses: ./.github/actions/linux-deps
 
