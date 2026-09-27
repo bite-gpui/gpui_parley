@@ -26,6 +26,7 @@ edition = "2024"
 license = "Apache-2.0"
 description = "A Parley-backed TextSystem for GPUI"
 repository = "https://github.com/bite-gpui/gpui_parley"
+homepage = "https://bite-gpui.github.io/"
 readme = "README.md"
 keywords = ["gui", "text", "shaping", "layout"]
 categories = ["gui"]
